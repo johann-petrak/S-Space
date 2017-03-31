@@ -43,6 +43,7 @@ import edu.ucla.sspace.text.IteratorFactory;
 import edu.ucla.sspace.util.Counter;
 import edu.ucla.sspace.util.LoggerUtil;
 import edu.ucla.sspace.util.ObjectCounter;
+import edu.ucla.sspace.util.ReflectionUtil;
 
 import edu.ucla.sspace.vector.DenseVector;
 import edu.ucla.sspace.vector.DoubleVector;
@@ -218,6 +219,19 @@ public class LatentSemanticAnalysis extends GenericTermDocumentVectorSpace
     public static final String RETAIN_DOCUMENT_SPACE_PROPERTY =
         PROPERTY_PREFIX + ".retainDocSpace";
 
+    
+    /** 
+     * Indicates if the LSA space should weight concept dimensions by the
+     * corresponding singular values or the values from the inverted singular
+     * value matrix.
+     * Possible values: none (no weighting), sigma (weight by original sigma matrix), 
+     * sigmainv (weight by inverted sigma matrix) where sigma is the diagonal 
+     * matrix containing the singular values.
+     * Default is no reweighting ("none")
+     * 
+     */
+    public static final String LSA_TERMVEC_WEIGHTING = PROPERTY_PREFIX + ".termvecweighting";
+    
     /**
      * The name prefix used with {@link #getName()}
      */
@@ -260,24 +274,24 @@ public class LatentSemanticAnalysis extends GenericTermDocumentVectorSpace
      * document feature space into two smaller feature spaces: a word by class
      * feature space and a class by feature space.
      */
-    private final SingularValueDecomposition reducer;
+    private SingularValueDecomposition reducer;
 
     /**
      * The {@link Transform} applied to the term document matrix prior to being
      * reduced.
      */
-    private final Transform transform;
+    private Transform transform;
 
     /**
      * The final number of latent classes that will be used to represent the
      * word space.
      */
-    private final int dimensions;
+    private int dimensions;
 
     /**
      * Set the true if the reduced document space will be made accessible.
      */
-    private final boolean retainDocumentSpace;
+    private boolean retainDocumentSpace;
 
     /**
      * Creates a new {@link LatentSemanticAnalysis} instance.  This intializes
@@ -453,6 +467,23 @@ public class LatentSemanticAnalysis extends GenericTermDocumentVectorSpace
      *        properties.
      */
     public void processSpace(Properties properties) {
+        // override settings we have from the constructor with the settings from 
+        // the properties
+        String dimensionsStr = properties.getProperty(LSA_DIMENSIONS_PROPERTY);
+        if(dimensionsStr != null) dimensions = Integer.parseInt(dimensionsStr);
+      
+        String transformStr = properties.getProperty(MATRIX_TRANSFORM_PROPERTY);        
+        if(transformStr != null) transform = ReflectionUtil.getObjectInstance(transformStr);
+        
+        String reducerStr = properties.getProperty(LSA_SVD_ALGORITHM_PROPERTY);
+        if(reducerStr != null) reducer = ReflectionUtil.getObjectInstance(reducerStr);
+        
+        String retainStr = properties.getProperty(RETAIN_DOCUMENT_SPACE_PROPERTY);
+        if(retainStr != null) retainDocumentSpace = Boolean.parseBoolean(retainStr);
+        
+        String termvecWeighting = properties.getProperty(LSA_TERMVEC_WEIGHTING);
+        if(termvecWeighting==null) termvecWeighting = "none";
+        
         // Perform any optional transformations (e.g., tf-idf) on the
         // term-document matrix
         MatrixFile processedSpace = processSpace(transform);
@@ -475,6 +506,23 @@ public class LatentSemanticAnalysis extends GenericTermDocumentVectorSpace
             // the document vectors, which in the un-transposed version are
             // the columns.
             documentSpace = Matrices.transpose(reducer.classFeatures());
+        }
+        // if we want any re-weighting directly transform the U (termvector) matrix
+        // as configured.
+        if(!termvecWeighting.equals("none")) {
+          Matrix Uweighted = null;
+          DiagonalMatrix sigmaInvMatrix = null;
+          boolean invert = false;
+          if(termvecWeighting.equals("sigmainv")) invert = true;
+          int rows = sigma.rows();
+          double[] diag = new double[rows];
+          for (int i = 0; i < rows; ++i)
+            diag[i] = invert ? (1d / sigma.get(i, i)) : sigma.get(i,i);
+          
+          DiagonalMatrix mSigma = new DiagonalMatrix(diag);
+          Uweighted =
+                Matrices.multiply(U, mSigma);
+          U = Uweighted;
         }
     }
 
