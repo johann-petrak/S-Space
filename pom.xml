@@ -7,8 +7,8 @@
   <groupId>edu.ucla.sspace</groupId>
   <artifactId>sspace</artifactId>
   <packaging>jar</packaging>
-  <name>S-Space Package</name>
-  <version>2.0.4</version>
+  <name>S-Space MINE</name>
+  <version>2.0.5-jp-SNAPSHOT</version>
 
   <parent>
     <groupId>org.sonatype.oss</groupId>
