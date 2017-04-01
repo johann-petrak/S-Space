@@ -28,7 +28,6 @@ import edu.ucla.sspace.vector.IntegerVector;
 import edu.ucla.sspace.vector.SparseDoubleVector;
 import edu.ucla.sspace.vector.SparseVector;
 import edu.ucla.sspace.vector.Vector;
-import edu.ucla.sspace.vector.VectorIO;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -37,11 +36,7 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.InputStream;
 import java.io.IOException;
-import java.io.IOError;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 
@@ -52,6 +47,7 @@ import java.lang.management.MemoryUsage;
 import java.util.Set;
 
 import java.util.logging.Logger;
+import java.util.zip.GZIPOutputStream;
 
 
 /**
@@ -88,7 +84,7 @@ public class SemanticSpaceIO {
      * for file format specifications.
      */
     public enum SSpaceFormat 
-        { TEXT, BINARY, SPARSE_TEXT, SPARSE_BINARY, SERIALIZE }
+        { TEXT, BINARY, SPARSE_TEXT, SPARSE_BINARY, SERIALIZE, W2V_TEXT, W2V_TEXT_GZ }
 
     /**
      * Uninstantiable
@@ -354,6 +350,12 @@ public class SemanticSpaceIO {
             LOGGER.fine("Saving " + sspace + " to disk as serialized object");
             SerializableUtil.save(sspace, output);
             break;
+        case W2V_TEXT:
+            writeWord2VecText(sspace,output,false);
+            break;
+        case W2V_TEXT_GZ:
+            writeWord2VecText(sspace,output,true);
+            break;
         default:
             assert false : format;
         }
@@ -432,6 +434,48 @@ public class SemanticSpaceIO {
                 sb.append(vector.getValue(length - 1).doubleValue());
             }
             pw.println(sb);
+        }
+        pw.close();
+    }
+
+    /**
+     * Writes the semantic space to the file using Word2Vec embeddings text format.
+     *
+     * @param sspace the semantic space to be written
+     * @param output the file into which the space will be written
+     * @param compress if the output should get gzip compressed
+     *
+     * @throws IOException if any I/O exception occurs when reading the semantic
+     *         space data from the file
+     */
+    private static void writeWord2VecText(SemanticSpace sspace, File output, boolean compress) 
+            throws IOException {
+        OutputStream os = new FileOutputStream(output);
+        if(compress) os = new GZIPOutputStream(os);
+        PrintWriter pw = new PrintWriter(os);
+        Set<String> words = sspace.getWords();
+        // determine how many dimensions are used by the vectors
+        int dimensions = 0;
+        if (words.size() > 0) {
+            dimensions = sspace.getVectorLength();
+        }
+        // Write the first line which is the header line of the form:
+        // numLines numDimensions
+        pw.println(words.size() + " " + dimensions);
+        LOGGER.fine("saving w2vec text with " + words.size() + 
+                    " words with " + dimensions + "-dimensional vectors");
+
+
+        // For each word, write out the word itself, followed by a space
+        // character and then a list of space-separated values.
+        for (String word : words) {
+          pw.print(word);
+          Vector vector = sspace.getVector(word);            
+          for (int i = 0; i < vector.length(); ++i) {
+            pw.print(' ');
+            pw.print(vector.getValue(i).doubleValue());            
+          }
+          pw.println();
         }
         pw.close();
     }
